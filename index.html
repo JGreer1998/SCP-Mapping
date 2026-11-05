@@ -22,7 +22,11 @@
 <script>
 // ---- SETTINGS: check these match your GeoJSON field names ----
 const YEARS = [2020, 2021, 2022, 2023, 2024, 2025, 2026];
-const LABEL = { 2020: '2020 (partial)', 2026: '2026 (partial)' };
+const LABEL = {
+  2020: '2020/21 (from Feb 2021)', 2021: '2021/22', 2022: '2022/23',
+  2023: '2023/24', 2024: '2024/25', 2025: '2025/26',
+  2026: '2026/27 (Apr–Jun)'
+};
 const NAME_FIELD = 'LAD20NM';
 const VAL = y => 'Val_' + y;      // e.g. 'QGISMaster_Val_' + y if prefixed
 const POP = y => 'Pop_' + y;
@@ -121,7 +125,7 @@ fetch('councils.geojson')
     const legend = L.control({ position: 'bottomright' });
     legend.onAdd = function () {
       const d = L.DomUtil.create('div', 'panel legend');
-      d.innerHTML = '<b>Payment per child<br>vs Scotland (=100)</b><br>';
+     d.innerHTML = '<b>Payment per child aged 0–15<br>vs Scotland (=100)</b><br>';
       COLOURS.forEach((c, i) => {
         d.innerHTML += `<i style="background:${c}"></i>` +
                        CLASS_LABELS[i] + '<br>';
@@ -142,7 +146,17 @@ fetch('councils.geojson')
       return d;
     };
     sliderCtl.addTo(map);
-
+    
+const note = L.control({ position: 'bottomleft' });
+note.onAdd = () => {
+  const d = L.DomUtil.create('div', 'panel');
+  d.style.maxWidth = '260px';
+  d.innerHTML = '<small>Payments: Social Security Scotland, financial ' +
+    'years. Children: NRS mid-year estimates, ages 0–15 (2026 uses 2025). ' +
+    'Under-6s only eligible until Nov 2022.</small>';
+  return d;
+};
+note.addTo(map);
     // Council boundaries
     layer = L.geoJSON(data, {
       style,
