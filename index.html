@@ -6,15 +6,44 @@
   <title>Scottish Child Payment by Local Authority</title>
   <link rel="stylesheet"
         href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <style>
-    html, body, #map { height: 100%; margin: 0; }
-    .panel { background: #e8eef3; padding: 8px 12px; border-radius: 6px;
-             box-shadow: 0 1px 5px rgba(0,0,0,.3); font: 14px sans-serif; }
-    .legend i { display: inline-block; width: 18px; height: 12px;
-                margin-right: 6px; vertical-align: middle;
-                border: 1px solid #999; }
-    #slider { width: 220px; }
-  </style>
+<style>
+  html, body, #map { height: 100%; margin: 0; }
+  .panel { background: #e8eef3; padding: 8px 12px; border-radius: 6px;
+           box-shadow: 0 1px 5px rgba(0,0,0,.3); font: 14px sans-serif; }
+  .legend i { display: inline-block; width: 18px; height: 12px;
+              margin-right: 6px; vertical-align: middle;
+              border: 1px solid #999; }
+  .legend .item { display: block; }
+  .legend .short { display: none; }
+  .slider-row { display: flex; align-items: center; gap: 8px; }
+  #slider { width: 220px; }
+  .note { max-width: 260px; }
+  details summary { cursor: pointer; margin-top: 6px; }
+
+  @media (max-width: 600px) {
+    .panel { font-size: 12px; padding: 6px 8px; }
+    .panel hr { margin: 4px 0; }
+    .info { max-width: calc(100vw - 80px); }   /* clear zoom buttons */
+
+    /* Make the bottom-right corner span the full width */
+    .leaflet-bottom.leaflet-right { left: 0; }
+    .leaflet-bottom.leaflet-right .panel {
+      width: calc(100% - 20px); box-sizing: border-box; }
+
+    #slider { width: auto; flex: 1; }
+    #play { min-width: 40px; min-height: 32px; }   /* bigger tap target */
+
+    /* Horizontal legend */
+    .legend br.desk { display: none; }
+    .legend-items { display: flex; gap: 2px; margin-top: 4px; }
+    .legend .item { flex: 1; text-align: center; font-size: 11px; }
+    .legend i { display: block; width: auto; margin: 0 0 2px; }
+    .legend .full { display: none; }
+    .legend .short { display: inline; }
+
+    .leaflet-control-attribution { font-size: 9px; }
+  }
+</style>
 </head>
 <body>
 <div id="map"></div>
@@ -34,6 +63,11 @@ const BREAKS = [80, 95, 105, 120];                  // Scotland = 100
 const COLOURS = ['#2166ac', '#92c5de', '#f7f7f7', '#f4a582', '#b2182b'];
 const CLASS_LABELS = ['Well below (under 80)', 'Below (80–95)',
   'Around Scotland (95–105)', 'Above (105–120)', 'Well above (120+)'];
+  const isMobile = window.matchMedia('(max-width: 600px)').matches;
+const SHORT_LABELS = ['<80', '80–95', '95–105', '105–120', '120+'];
+const NOTE = 'Payments: Social Security Scotland, financial years. ' +
+  'Children: NRS mid-year estimates, ages 0–15 (2026 uses 2025). ' +
+  'Under-6s only eligible until Nov 2022.';
 // ---------------------------------------------------------------
 
 let yearIdx = YEARS.indexOf(2025);
@@ -63,7 +97,7 @@ function style(f) {
            weight: 1, color: '#444', fillOpacity: 0.85 };
 }
 
-const map = L.map('map').setView([57.5, -4.5], 6);  
+const map = L.map('map', { zoomSnap: 0.25 }).setView([57.5, -4.5], 6);
   
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
@@ -98,7 +132,7 @@ fetch('councils.geojson')
     // Hover info box
     info = L.control({ position: 'topright' });
     info.onAdd = function () {
-      this._div = L.DomUtil.create('div', 'panel');
+      this._div = L.DomUtil.create('div', 'panel info');
       this.update();
       return this._div;
     };
@@ -121,42 +155,54 @@ fetch('councils.geojson')
     };
     info.addTo(map);
 
-    // Legend
-    const legend = L.control({ position: 'bottomright' });
-    legend.onAdd = function () {
-      const d = L.DomUtil.create('div', 'panel legend');
-     d.innerHTML = '<b>Payment per child aged 0–15<br>vs Scotland (=100)</b><br>';
-      COLOURS.forEach((c, i) => {
-        d.innerHTML += `<i style="background:${c}"></i>` +
-                       CLASS_LABELS[i] + '<br>';
-      });
-      return d;
-    };
-    legend.addTo(map);
-
-    // Year slider + play button
-    const sliderCtl = L.control({ position: 'bottomleft' });
+        // Year slider + play button (added first so it sits lowest on mobile)
+    const sliderCtl = L.control({
+      position: isMobile ? 'bottomright' : 'bottomleft'
+    });
     sliderCtl.onAdd = function () {
       const d = L.DomUtil.create('div', 'panel');
-      d.innerHTML = `<b>Year: <span id="yr">${label(year())}</span></b><br>
-        <input type="range" id="slider" min="0"
-               max="${YEARS.length - 1}" value="${yearIdx}">
-        <button id="play">▶</button>`;
+      d.innerHTML = `<b>Year: <span id="yr">${label(year())}</span></b>
+        <div class="slider-row">
+          <input type="range" id="slider" min="0"
+                 max="${YEARS.length - 1}" value="${yearIdx}">
+          <button id="play">▶</button>
+        </div>`;
       L.DomEvent.disableClickPropagation(d);
       return d;
     };
     sliderCtl.addTo(map);
-    
-const note = L.control({ position: 'bottomleft' });
-note.onAdd = () => {
-  const d = L.DomUtil.create('div', 'panel');
-  d.style.maxWidth = '260px';
-  d.innerHTML = '<small>Payments: Social Security Scotland, financial ' +
-    'years. Children: NRS mid-year estimates, ages 0–15 (2026 uses 2025). ' +
-    'Under-6s only eligible until Nov 2022.</small>';
-  return d;
-};
-note.addTo(map);
+
+    // Legend
+    const legend = L.control({ position: 'bottomright' });
+    legend.onAdd = function () {
+      const d = L.DomUtil.create('div', 'panel legend');
+      d.innerHTML =
+        '<b>Payment per child aged 0–15<br class="desk"> ' +
+        'vs Scotland (=100)</b><div class="legend-items">' +
+        COLOURS.map((c, i) =>
+          `<span class="item"><i style="background:${c}"></i>` +
+          `<span class="full">${CLASS_LABELS[i]}</span>` +
+          `<span class="short">${SHORT_LABELS[i]}</span></span>`
+        ).join('') + '</div>';
+      if (isMobile) {
+        d.innerHTML += '<details><summary>About the data</summary>' +
+                       `<small>${NOTE}</small></details>`;
+        L.DomEvent.disableClickPropagation(d);
+      }
+      return d;
+    };
+    legend.addTo(map);
+
+    // Data note: own panel on desktop, folded into legend on mobile
+    if (!isMobile) {
+      const note = L.control({ position: 'bottomleft' });
+      note.onAdd = () => {
+        const d = L.DomUtil.create('div', 'panel note');
+        d.innerHTML = `<small>${NOTE}</small>`;
+        return d;
+      };
+      note.addTo(map);
+    }
     // Council boundaries
     layer = L.geoJSON(data, {
       style,
@@ -165,10 +211,17 @@ note.addTo(map);
                           e.target.bringToFront();
                           info.update(f.properties); },
         mouseout: e => { layer.resetStyle(e.target); info.update(); },
-        click: e => map.fitBounds(e.target.getBounds())
+        click: e => {
+          if (!isMobile) map.fitBounds(e.target.getBounds());
+        }
       })
     }).addTo(map);
-    map.fitBounds(layer.getBounds());
+
+    map.fitBounds(layer.getBounds(), isMobile ? {
+      paddingTopLeft: [0, info.getContainer().offsetHeight + 10],
+      paddingBottomRight: [0, document.querySelector(
+        '.leaflet-bottom.leaflet-right').offsetHeight]
+    } : {});
 
     function setYear(i) {
       yearIdx = i;
