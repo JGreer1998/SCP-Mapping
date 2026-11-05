@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scottish Child Payment by Local Authority</title>
+  <link rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    html, body, #map { height: 100%; margin: 0; }
+    .panel { background: #fff; padding: 8px 12px; border-radius: 6px;
+             box-shadow: 0 1px 5px rgba(0,0,0,.3); font: 14px sans-serif; }
+    .legend i { display: inline-block; width: 18px; height: 12px;
+                margin-right: 6px; vertical-align: middle;
+                border: 1px solid #999; }
+    #slider { width: 220px; }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ---- SETTINGS: check these match your GeoJSON field names ----
+const YEARS = [2020, 2021, 2022, 2023, 2024, 2025, 2026];
+const LABEL = { 2020: '2020 (partial)', 2026: '2026 (partial)' };
+const NAME_FIELD = 'Local Authority';
+const VAL = y => 'Val_' + y;      // e.g. 'QGISMaster_Val_' + y if prefixed
+const POP = y => 'Pop_' + y;
+const BREAKS = [80, 95, 105, 120];                  // Scotland = 100
+const COLOURS = ['#2166ac', '#92c5de', '#f7f7f7', '#f4a582', '#b2182b'];
+const CLASS_LABELS = ['Well below (under 80)', 'Below (80–95)',
+  'Around Scotland (95–105)', 'Above (105–120)', 'Well above (120+)'];
+// ---------------------------------------------------------------
+
+let yearIdx = YEARS.indexOf(2025);
+let layer, info;
+const scot = {};                     // Scotland £ per child, by year
+const year = () => YEARS[yearIdx];
+const label = y => LABEL[y] || y;
+const gbp = n => '£' + Math.round(n).toLocaleString('en-GB');
+
+function perChild(p, y) {
+  const v = +p[VAL(y)], pop = +p[POP(y)];
+  return pop > 0 && !isNaN(v) ? v / pop : null;
+}
+function idx(p, y) {
+  const r = perChild(p, y);
+  return r == null ? null : 100 * r / scot[y];
+}
+function colour(v) {
+  if (v == null || isNaN(v)) return '#ccc';
+  for (let i = 0; i < BREAKS.length; i++) {
+    if (v < BREAKS[i]) return COLOURS[i];
+  }
+  return COLOURS[COLOURS.length - 1];
+}
+function style(f) {
+  return { fillColor: colour(idx(f.properties, year())),
+           weight: 1, color: '#444', fillOpacity: 0.85 };
+}
+
+const map = L.map('map').setView([57.5, -4.2], 6);
+L.tileLayer(
+  'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  { attribution: '&copy; OpenStreetMap &copy; CARTO' }
+).addTo(map);
+
+fetch('councils.geojson')
+  .then(r => r.json())
+  .then(data => {
+    // Scotland figure = total paid / total children, per year
+    YEARS.forEach(y => {
+      let v = 0, p = 0;
+      data.features.forEach(f => {
+        v += +f.properties[VAL(y)] || 0;
+        p += +f.properties[POP(y)] || 0;
+      });
+      scot[y] = p ? v / p : null;
+    });
+
+    // Hover info box
+    info = L.control({ position: 'topright' });
+    info.onAdd = function () {
+      this._div = L.DomUtil.create('div', 'panel');
+      this.update();
+      return this._div;
+    };
+    info.update = function (p) {
+      const y = year();
+      let html = `<b>Scottish Child Payment, ${label(y)}</b><br>
+        Scotland: ${gbp(scot[y])} per child<hr>`;
+      if (p) {
+        const r = perChild(p, y), i = idx(p, y);
+        html += r == null ? `<b>${p[NAME_FIELD]}</b><br>No data` :
+          `<b>${p[NAME_FIELD]}</b><br>
+           ${gbp(r)} per child<br>
+           ${gbp(r * 1000)} per 1,000 children<br>
+           Index: ${Math.round(i)} (Scotland = 100)<br>
+           Total paid: ${gbp(+p[VAL(y)])}`;
+      } else {
+        html += 'Hover over a council area';
+      }
+      this._div.innerHTML = html;
+    };
+    info.addTo(map);
+
+    // Legend
+    const legend = L.control({ position: 'bottomright' });
+    legend.onAdd = function () {
+      const d = L.DomUtil.create('div', 'panel legend');
+      d.innerHTML = '<b>Payment per child<br>vs Scotland (=100)</b><br>';
+      COLOURS.forEach((c, i) => {
+        d.innerHTML += `<i style="background:${c}"></i>` +
+                       CLASS_LABELS[i] + '<br>';
+      });
+      return d;
+    };
+    legend.addTo(map);
+
+    // Year slider + play button
+    const sliderCtl = L.control({ position: 'bottomleft' });
+    sliderCtl.onAdd = function () {
+      const d = L.DomUtil.create('div', 'panel');
+      d.innerHTML = `<b>Year: <span id="yr">${label(year())}</span></b><br>
+        <input type="range" id="slider" min="0"
+               max="${YEARS.length - 1}" value="${yearIdx}">
+        <button id="play">▶</button>`;
+      L.DomEvent.disableClickPropagation(d);
+      return d;
+    };
+    sliderCtl.addTo(map);
+
+    // Council boundaries
+    layer = L.geoJSON(data, {
+      style,
+      onEachFeature: (f, l) => l.on({
+        mouseover: e => { e.target.setStyle({ weight: 3, color: '#000' });
+                          e.target.bringToFront();
+                          info.update(f.properties); },
+        mouseout: e => { layer.resetStyle(e.target); info.update(); },
+        click: e => map.fitBounds(e.target.getBounds())
+      })
+    }).addTo(map);
+    map.fitBounds(layer.getBounds());
+
+    function setYear(i) {
+      yearIdx = i;
+      document.getElementById('yr').textContent = label(year());
+      document.getElementById('slider').value = i;
+      layer.setStyle(style);
+      info.update();
+    }
+    document.getElementById('slider').addEventListener('input',
+      e => setYear(+e.target.value));
+
+    let timer = null;
+    document.getElementById('play').addEventListener('click', e => {
+      if (timer) { clearInterval(timer); timer = null;
+                   e.target.textContent = '▶'; return; }
+      e.target.textContent = '⏸';
+      timer = setInterval(
+        () => setYear((yearIdx + 1) % YEARS.length), 1200);
+    });
+  });
+</script>
+</body>
+</html>
