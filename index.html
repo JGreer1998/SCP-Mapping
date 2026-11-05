@@ -58,6 +58,8 @@ function style(f) {
   return { fillColor: colour(idx(f.properties, year())),
            weight: 1, color: '#444', fillOpacity: 0.85 };
 }
+
+const map = L.map('map').setView([57.5, -4.5], 6);  
   
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
