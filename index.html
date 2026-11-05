@@ -23,7 +23,7 @@
 // ---- SETTINGS: check these match your GeoJSON field names ----
 const YEARS = [2020, 2021, 2022, 2023, 2024, 2025, 2026];
 const LABEL = { 2020: '2020 (partial)', 2026: '2026 (partial)' };
-const NAME_FIELD = 'Local Authority';
+const NAME_FIELD = 'LAD20NM';
 const VAL = y => 'Val_' + y;      // e.g. 'QGISMaster_Val_' + y if prefixed
 const POP = y => 'Pop_' + y;
 const BREAKS = [80, 95, 105, 120];                  // Scotland = 100
@@ -72,6 +72,15 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
 fetch('councils.geojson')
   .then(r => r.json())
   .then(data => {
+    // Copy prefixed QGIS fields to short names, e.g.
+    // 'TotalPop2025 — QGISMaster_Val_2020' becomes 'Val_2020'
+    data.features.forEach(f => {
+      const p = f.properties;
+      Object.keys(p).forEach(k => {
+        const m = k.match(/(Val|Pop|Rate)_(\d{4})$/);
+        if (m) p[m[1] + '_' + m[2]] = p[k];
+      });
+    });
     // Scotland figure = total paid / total children, per year
     YEARS.forEach(y => {
       let v = 0, p = 0;
